@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>RO Manager Reporting – PDF (≤5 MB)</title>
+<style>
+  :root{--brand:#0a74da;--dark:#0f1530;--muted:#94a1c6;--bg:#0b1020;--card:#131935;--line:#2a2f45;--text:#e8eaf3}
+  *{box-sizing:border-box}
+  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0;background:var(--bg);color:var(--text)}
+  header{position:sticky;top:0;background:var(--dark);border-bottom:1px solid var(--line);padding:12px 16px;z-index:10}
+  h1{margin:0;font-size:20px}
+  main{padding:16px;max-width:980px;margin:0 auto}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;margin-bottom:16px;overflow:hidden}
+  .card h2{margin:0;padding:12px 16px;border-bottom:1px solid var(--line);font-size:16px;background:var(--dark)}
+  .content{padding:16px;display:grid;gap:12px}
+  .grid-2{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+  label{font-size:12px;color:#aeb6d9}
+  input[type=text]{width:100%;padding:10px;border-radius:10px;border:1px solid var(--line);background:#0b1020;color:var(--text)}
+  .row{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center}
+  .photo-row{display:grid;grid-template-columns:1.2fr .8fr;gap:10px}
+  .hint{font-size:12px;color:var(--muted)}
+  .btn{background:var(--brand);border:none;color:#fff;padding:10px 14px;border-radius:10px;cursor:pointer;font-weight:600}
+  .btn.alt{background:#2a2f45}
+  .btn.sm{padding:6px 10px;border-radius:8px;font-size:12px}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .actions{display:flex;gap:12px;flex-wrap:wrap}
+  .thumb{width:100%;aspect-ratio:16/9;background:#0b1020;border:1px dashed var(--line);border-radius:12px;display:flex;align-items:center;justify-content:center;color:#8e96b8;font-size:12px;overflow:hidden}
+  .thumb img{width:100%;height:100%;object-fit:cover}
+  .status{font-size:12px;color:#aeb6d9}
+  .progress{height:8px;background:#1e2442;border-radius:999px;overflow:hidden}
+  .bar{height:100%;width:0;background:var(--brand);transition:width .2s ease}
+  .pill{display:inline-block;padding:4px 10px;border:1px solid var(--line);border-radius:999px;font-size:12px;color:#c8cff0}
+  .err{color:#ffb4b4;font-size:12px}
+</style>
+</head>
+<body>
+<header>
+  <h1>RO Manager Reporting → PDF (≤ 5 MB)</h1>
+  <div class="status">All fields compulsory • Camera-only • GPS/time auto • Photo watermark • DigiPIN from GPS</div>
+</header>
+<div id="secWarn" style="display:none;background:#5a1; color:#fff; padding:8px 16px; font-size:12px;">Location requires HTTPS or localhost. Please publish this page (Netlify/Vercel) or run on http://localhost.</div>
+
+<main>
+  <div class="card">
+    <h2>Outlet & Reporter Details</h2>
+    <div class="content grid-2">
+      <div>
+        <label>CMS Code (Exactly 10 characters) *</label>
+        <input id="cmsCode" minlength="10" maxlength="10" type="text" placeholder="e.g., 1234567890" required />
+        <div id="cmsErr" class="err"></div>
+      </div>
+      <div>
+        <label>DIGIPIN (auto from GPS)</label>
+        <input id="digipin" type="text" readonly />
+      </div>
+      <div>
+        <label>RO NAME *</label>
+        <input id="roName" type="text" placeholder="Retail Outlet Name" required />
+      </div>
+      <div>
+        <label>RO LOCATION *</label>
+        <div class="row">
+          <input id="roLocation" type="text" placeholder="Auto from GPS (editable)" required />
+          <button class="btn sm" id="refreshLoc">Refresh from GPS</button>
+        </div>
+      </div>
+      <div>
+        <label>DISTRICT *</label>
+        <div class="row">
+          <input id="district" type="text" placeholder="Auto from GPS (editable)" required />
+          <button class="btn sm" id="refreshDist">Refresh</button>
+        </div>
+      </div>
+      <div>
+        <label>STATE *</label>
+        <div class="row">
+          <input id="state" type="text" placeholder="Auto from GPS (editable)" required />
+          <button class="btn sm" id="refreshState">Refresh</button>
+        </div>
+      </div>
+      <div>
+        <label>TSM NAME *</label>
+        <input id="tsmName" type="text" placeholder="TSM Name" required />
+      </div>
+      <div>
+        <label>RO MANAGER NAME *</label>
+        <input id="managerName" type="text" placeholder="RO Manager Name" required />
+      </div>
+      <div>
+        <label>Current GPS (auto)</label>
+        <div class="row"><span id="gps" class="pill">Waiting…</span><button class="btn sm" id="enableGPS" type="button">Enable GPS</button><button class="btn sm" id="retryGPS" type="button">Retry</button><span id="gpsWarn" class="err"></span></div>
+      </div>
+      <div>
+        <label>Report Time (auto)</label>
+        <div><span id="reportTime" class="pill"></span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Required Photo Checklist (Camera ONLY)</h2>
+    <div class="content">
+      <div class="hint">Tap "Take Photo" for each item. Gallery upload is blocked where possible. Images are watermarked & compressed.</div>
+      <div id="photos"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Generate Report</h2>
+    <div class="content">
+      <div class="status">Estimated size: <span id="estimate">0.00</span> MB (target ≤ 5.00)</div>
+      <div class="progress"><div id="progBar" class="bar"></div></div>
+      <div class="actions">
+        <button id="generate" class="btn" disabled>Submit & Generate PDF</button>
+        <button id="clear" class="btn alt">Clear All</button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script>
+// ---------------- Global Config ----------------
+const PHOTO_SECTIONS = [
+ "1) RO FULL PHOTO","2) RO TOTEM (LIGHTS ON) & RSP DISPLAY","3) TOILET – MALE","4) TOILET – FEMALE",
+ "5) SALES BUILDING PHOTO","6) STOCK BOARD PHOTO","7) MS SALES – DSSR","8) MS STOCK – DSSR",
+ "9) HSD SALES – DSSR","10) HSD STOCK","11) MS DENSITY","12) HSD DENSITY",
+ "13) AIR FACILITY WORKING","14) WATER FACILITY WORKING","15) FSM IN UNIFORM","16) ALL DCPs NEAR STOCK BOARD"
+];
+let photoState = {}; // key -> { dataUrl, w, h, takenAt, gpsStamp }
+let currentGPS = { lat:null, lon:null, acc:null };
+const MAX_MB = 5.0;
+
+// ---------------- Helpers ----------------
+const $ = (id)=>document.getElementById(id);
+const pad = (n)=>String(n).padStart(2,'0');
+const dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+function nowStamp12(){
+  const d=new Date();
+  const day = dayNames[d.getDay()];
+  const yyyy=d.getFullYear(), mm=pad(d.getMonth()+1), dd=pad(d.getDate());
+  let hh=d.getHours(); const ampm = hh>=12?'PM':'AM'; hh = hh%12; if(hh===0) hh=12;
+  const mi=pad(d.getMinutes());
+  return `${day}, ${dd}-${mm}-${yyyy} ${pad(hh)}:${mi} ${ampm}`;
+}
+function b64SizeMB(dataUrl){ const i=dataUrl.indexOf(','); const len=dataUrl.length-(i+1); return (len*3/4)/(1024*1024); }
+function estimateTotalMB(){ let sum=0; Object.values(photoState).forEach(p=>{ if(p?.dataUrl) sum+=b64SizeMB(p.dataUrl); }); return (sum + 0.2); }
+function updateEstimate(){ $('estimate').innerText = estimateTotalMB().toFixed(2); }
+function setProgress(p){ $('progBar').style.width = Math.max(0,Math.min(100,p))+'%'; }
+function enableIfReady(){
+  const cmsOk = $('cmsCode').value.trim().length === 10;
+  const fieldsOk = ['roName','roLocation','district','state','tsmName','managerName'].every(id => $(id).value.trim().length>0);
+  const photosOk = PHOTO_SECTIONS.every((_,i)=> !!photoState['p'+i]);
+  $('generate').disabled = !(cmsOk && fieldsOk && photosOk);
+}
+
+// ---------------- DigiPIN (from GPS: simulated base32 code) ----------------
+function toBase32(n){ const a='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let s=''; n=Math.abs(n); for(let i=0;i<6;i++){ s=a[n%32]+s; n=Math.floor(n/32);} return s; }
+function genDigiPinFromLatLon(lat, lon){
+  const scaledLat=Math.round((lat+90)*10000);
+  const scaledLon=Math.round((lon+180)*10000);
+  const code = (toBase32(scaledLat).slice(-5)+toBase32(scaledLon).slice(-5)).toUpperCase();
+  return code;
+}
+
+// ---------------- Reverse Geocoding (Auto-fill but editable) ----------------
+const fieldDirty = { roLocation:false, district:false, state:false };
+['roLocation','district','state','roName','tsmName','managerName','cmsCode'].forEach(id=>{
+  $(id).addEventListener('input', ()=> enableIfReady());
+});
+['roLocation','district','state'].forEach(id=>{
+  $(id).addEventListener('input', ()=> fieldDirty[id]=true);
+});
+
+async function reverseGeocodeIN(lat, lon){
+  try{
+    const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&zoom=14&addressdetails=1&accept-language=en-IN&countrycodes=in`;
+    const res = await fetch(url, {headers:{'Accept':'application/json'}});
+    const j = await res.json();
+    const a = j.address || {};
+    const locText = [a.suburb, a.village, a.town, a.city].filter(Boolean).join(", ");
+    if(!fieldDirty.roLocation && !$('roLocation').value) $('roLocation').value = (locText || a.state_district || a.state || '').toUpperCase();
+    if(!fieldDirty.district && !$('district').value) $('district').value = ((a.district || a.state_district || a.city || a.town || '')).toUpperCase();
+    if(!fieldDirty.state && !$('state').value) $('state').value = (a.state || '').toUpperCase();
+    $('gpsWarn').textContent = '';
+    enableIfReady();
+  }catch(e){
+    $('gpsWarn').textContent = 'Address lookup failed. You can type location manually.';
+  }
+}
+
+// ---------------- Wave background ----------------
+function waveBackgroundCanvas(doc){
+  doc.setFillColor(230,243,255); doc.rect(0,0,297,210,'F');
+  doc.setFillColor(191,228,255); doc.triangle(0,0,297,0,297,35,'F');
+  doc.setFillColor(211,236,255); doc.triangle(0,30,297,12,0,0,'F');
+  doc.setFillColor(211,236,255); doc.triangle(0,210,297,180,297,210,'F');
+}
+
+// ---------------- Camera capture with WATERMARK ----------------
+function drawWatermarkOnCanvas(c, gpsText, timeText){
+  const ctx = c.getContext('2d');
+  const pad=12, barH=Math.max(32, Math.round(c.height*0.06));
+  ctx.fillStyle='rgba(0,0,0,0.45)';
+  ctx.fillRect(0, c.height-barH, c.width, barH);
+  ctx.fillStyle='#fff';
+  ctx.font = `${Math.max(14, Math.round(barH*0.45))}px Arial`;
+  ctx.textBaseline='middle';
+  ctx.fillText(`${timeText} | ${gpsText}`, pad, c.height - barH/2);
+}
+
+async function captureViaMedia(key){
+  const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode:{ideal:'environment'} }, audio:false });
+  const track = stream.getVideoTracks()[0];
+  let canvas = document.createElement('canvas'), ctx = canvas.getContext('2d');
+  if('ImageCapture' in window){
+    const ic = new ImageCapture(track);
+    const bitmap = await ic.grabFrame();
+    const scale = Math.min(1280/bitmap.width, 720/bitmap.height, 1);
+    canvas.width = Math.round(bitmap.width*scale); canvas.height = Math.round(bitmap.height*scale);
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  }else{
+    const video = document.createElement('video'); video.srcObject = stream; await video.play(); await new Promise(r=>setTimeout(r,220));
+    const scale = Math.min(1280/video.videoWidth, 720/video.videoHeight, 1);
+    canvas.width = Math.round(video.videoWidth*scale); canvas.height = Math.round(video.videoHeight*scale);
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height); video.pause();
+  }
+  track.stop();
+  // Watermark with GPS + time
+  const gpsText = (currentGPS.lat!=null) ? `${currentGPS.lat.toFixed(5)}, ${currentGPS.lon.toFixed(5)} ±${currentGPS.acc||''}m` : 'GPS PENDING';
+  const timeText = nowStamp12().toUpperCase();
+  drawWatermarkOnCanvas(canvas, gpsText, timeText);
+  let dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+  const qualities=[0.7,0.62,0.56,0.5,0.46,0.42,0.38];
+  for(const q of qualities){ if(b64SizeMB(dataUrl) <= 0.30) break; dataUrl = canvas.toDataURL('image/jpeg', q); }
+  photoState[key] = { dataUrl, w:canvas.width, h:canvas.height, takenAt: timeText, gpsStamp: gpsText };
+  $('thumb_'+key).innerHTML = `<img src="${dataUrl}">`;
+  $('hint_'+key).innerText = `Captured • ${gpsText}`;
+  updateEstimate(); enableIfReady();
+}
+
+function captureViaInput(key){
+  const input = document.createElement('input');
+  input.type='file'; input.accept='image/*'; input.capture='environment';
+  input.onchange = async (e)=>{
+    const file = e.target.files && e.target.files[0]; if(!file) return;
+    const reader = new FileReader();
+    reader.onload = async (r)=>{
+      const img = new Image();
+      img.onload = ()=>{
+        const scale = Math.min(1280/img.width, 720/img.height, 1);
+        const c=document.createElement('canvas'); c.width=Math.round(img.width*scale); c.height=Math.round(img.height*scale);
+        const x=c.getContext('2d'); x.drawImage(img,0,0,c.width,c.height);
+        // Watermark
+        const gpsText = (currentGPS.lat!=null) ? `${currentGPS.lat.toFixed(5)}, ${currentGPS.lon.toFixed(5)} ±${currentGPS.acc||''}m` : 'GPS PENDING';
+        const timeText = nowStamp12().toUpperCase();
+        drawWatermarkOnCanvas(c, gpsText, timeText);
+        let out = c.toDataURL('image/jpeg',0.7);
+        const qs=[0.7,0.62,0.56,0.5,0.46,0.42,0.38];
+        for(const q of qs){ if(b64SizeMB(out)<=0.30) break; out=c.toDataURL('image/jpeg',q); }
+        photoState[key]={dataUrl:out,w:c.width,h:c.height,takenAt: timeText, gpsStamp: gpsText};
+        $('thumb_'+key).innerHTML=`<img src="${out}">`;
+        $('hint_'+key).innerText=`Captured • ${gpsText}`;
+        updateEstimate(); enableIfReady();
+      };
+      img.src = r.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+  input.click();
+}
+
+async function capture(key){
+  try{ await captureViaMedia(key); } catch(e){ captureViaInput(key); }
+}
+
+// ---------------- UI render ----------------
+function addPhotoRow(label, idx){
+  const key='p'+idx;
+  const row=document.createElement('div'); row.className='photo-row';
+  row.innerHTML=`
+    <div>
+      <button class="btn" id="btn_${key}">Take Photo</button>
+      <div class="hint" id="hint_${key}">${label}</div>
+    </div>
+    <div class="thumb" id="thumb_${key}">No preview</div>`;
+  $('photos').appendChild(row);
+  $('btn_'+key).addEventListener('click', ()=>capture(key));
+}
+function renderPhotos(){ for(let i=0;i<PHOTO_SECTIONS.length;i++) addPhotoRow(PHOTO_SECTIONS[i], i); }
+
+// ---------------- Optimizer (≤ 5 MB) ----------------
+async function enforceFiveMB(){
+  let total = estimateTotalMB(); if(total <= MAX_MB) return;
+  const scales=[1.0,0.9,0.8,0.7,0.6]; const quals=[0.60,0.52,0.46,0.40,0.36];
+  let pass=0; const keys=Object.keys(photoState);
+  while(total>MAX_MB && pass<scales.length){
+    for(let i=0;i<keys.length;i++){
+      setProgress((i/keys.length)*100);
+      const k=keys[i]; const p=photoState[k]; if(!p?.dataUrl) continue;
+      const img = new Image();
+      await new Promise(res=>{ img.onload=res; img.src=p.dataUrl; });
+      const c=document.createElement('canvas'); c.width=Math.round(img.width*scales[pass]); c.height=Math.round(img.height*scales[pass]);
+      c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+      // re-apply watermark text to keep consistent after resample
+      drawWatermarkOnCanvas(c, p.gpsStamp || '', p.takenAt || '');
+      p.dataUrl = c.toDataURL('image/jpeg', quals[pass]);
+    }
+    total = estimateTotalMB(); pass++;
+  }
+  setProgress(100);
+  if(total>MAX_MB) throw new Error(`Still over ${MAX_MB} MB after optimization (${total.toFixed(2)} MB). Retake closer photos.`);
+}
+
+// ---------------- PDF generation ----------------
+async function generatePDF(meta){
+  const { jsPDF } = window.jspdf;
+  const {cmsU, roU, roLocU, districtU, stateU, tsmU, mgrU, gpsU, timeU, pinU} = meta;
+  const doc = new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
+  function line(y){ doc.setDrawColor(180); doc.line(10,y,287,y); }
+
+  // Cover
+  waveBackgroundCanvas(doc);
+  doc.setTextColor(0,59,115); doc.setFontSize(18); doc.text('RETAIL OUTLET PHOTO REPORT',148.5,16,{align:'center'});
+  doc.setFontSize(11);
+  const lines=[`CMS CODE: ${cmsU}`,`RO NAME: ${roU}`,`RO LOCATION: ${roLocU}`,`DISTRICT: ${districtU}`,`STATE: ${stateU}`,`TSM: ${tsmU}`,`RO MANAGER: ${mgrU}`,`GPS: ${gpsU}`,`REPORT TIME: ${timeU}`,`DIGIPIN: ${pinU}`];
+  lines.forEach((t,i)=>doc.text(t,12, 30 + i*8));
+  line(30 + lines.length*8 + 2);
+
+  // Photo pages
+  for(let i=0;i<PHOTO_SECTIONS.length;i++){
+    doc.addPage('landscape'); waveBackgroundCanvas(doc);
+    doc.setTextColor(0,59,115); doc.setFontSize(14); doc.text(PHOTO_SECTIONS[i],10,15);
+    const entry = photoState['p'+i];
+    if(entry?.dataUrl){
+      const fx=20, fy=25, fw=257, fh=150;
+      doc.setDrawColor(180); doc.setFillColor(255,255,255); doc.roundedRect(fx,fy,fw,fh,4,4,'FD');
+      const img = new Image(); await new Promise(res=>{ img.onload=res; img.src=entry.dataUrl; });
+      const iw=img.width, ih=img.height; const ratio=Math.min((fw-6)/iw,(fh-6)/ih); const w=iw*ratio, h=ih*ratio;
+      const x=fx+3+(fw-6-w)/2, y=fy+3+(fh-6-h)/2;
+      doc.addImage(entry.dataUrl,'JPEG',x,y,w,h);
+      doc.setTextColor(36,83,122); doc.setFontSize(10);
+      doc.text(`STAMP: ${entry.takenAt} | ${entry.gpsStamp} | DIGIPIN: ${pinU}`,10,200);
+    }
+  }
+  const fileName = `RO_Photo_Report_${roU.replace(/[^A-Z0-9]+/g,'_').slice(0,40)}_${cmsU}.pdf`;
+  doc.save(fileName);
+}
+
+// ---------------- Validation ----------------
+function validateFields(){
+  const cms = $('cmsCode').value.trim();
+  const ro = $('roName').value.trim();
+  const loc = $('roLocation').value.trim();
+  const dist = $('district').value.trim();
+  const st = $('state').value.trim();
+  const tsm = $('tsmName').value.trim();
+  const mgr = $('managerName').value.trim();
+
+  $('cmsErr').textContent = '';
+  if(cms.length !== 10){ $('cmsErr').textContent = 'CMS Code must be exactly 10 characters.'; return false; }
+  if(!ro || !loc || !dist || !st || !tsm || !mgr){ alert('All fields are compulsory. Please fill every field.'); return false; }
+  for(let i=0;i<PHOTO_SECTIONS.length;i++){ if(!photoState['p'+i]){ alert('Missing photo: '+PHOTO_SECTIONS[i]); return false; } }
+  return true;
+}
+
+// ---------------- Generate ----------------
+async function generateReports(){
+  if(!validateFields()) return;
+  $('generate').disabled = true; setProgress(8);
+
+  try{ await enforceFiveMB(); } catch(e){ $('generate').disabled=false; setProgress(0); alert(e.message); return; }
+  updateEstimate();
+
+  const meta = {
+    cmsU: $('cmsCode').value.toUpperCase(),
+    roU: $('roName').value.toUpperCase(),
+    roLocU: $('roLocation').value.toUpperCase(),
+    districtU: $('district').value.toUpperCase(),
+    stateU: $('state').value.toUpperCase(),
+    tsmU: $('tsmName').value.toUpperCase(),
+    mgrU: $('managerName').value.toUpperCase(),
+    gpsU: (currentGPS.lat!=null) ? `${(currentGPS.lat+'').toUpperCase()}, ${(currentGPS.lon+'').toUpperCase()} ±${(currentGPS.acc+'').toUpperCase()}M` : $('gps').innerText.toUpperCase(),
+    timeU: $('reportTime').innerText.toUpperCase(),
+    pinU: $('digipin').value.toUpperCase()
+  };
+
+  try{
+    setProgress(60);
+    await generatePDF(meta);
+    setProgress(100);
+    alert('PDF generated. Check your downloads.');
+  }catch(err){
+    console.error(err);
+    alert('Failed to generate PDF: '+err.message);
+  }finally{
+    $('generate').disabled=false;
+  }
+}
+
+
+// ---------------- Secure Origin & Permissions ----------------
+function isSecureOrigin(){
+  return location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+}
+async function checkPermission(){
+  if (!('permissions' in navigator) || !navigator.permissions.query) return null;
+  try{
+    const s = await navigator.permissions.query({name:'geolocation'});
+    return s.state; // 'granted' | 'prompt' | 'denied'
+  }catch(e){ return null; }
+}
+function showSecureWarningIfNeeded(){
+  const show = !isSecureOrigin();
+  document.getElementById('secWarn').style.display = show ? 'block' : 'none';
+}
+
+function explainGeoError(err){
+  const el = document.getElementById('gpsWarn');
+  switch(err && err.code){
+    case 1: el.textContent = 'Location permission denied. Allow location for this site in browser settings.'; break;
+    case 2: el.textContent = 'Position unavailable. Turn on GPS / High accuracy and try again.'; break;
+    case 3: el.textContent = 'Location request timed out. Move outdoors or enable high accuracy, then Retry.'; break;
+    default: el.textContent = (err && err.message) ? err.message : 'Unable to get location. Check permissions and Retry.';
+  }
+}
+
+// ---------------- Improved GPS start/retry ----------------
+async function ensureGPS(){
+  showSecureWarningIfNeeded();
+  if(!('geolocation' in navigator)){ document.getElementById('gps').innerText='GEO NOT SUPPORTED'; return; }
+  const state = await checkPermission();
+  if(state === 'denied'){
+    document.getElementById('gpsWarn').textContent = 'Location blocked. Go to Site Settings → Allow Location, then Retry.';
+  }
+  startGPS(true);
+}
+
+function startGPS(manual=false){
+  const gpsEl = document.getElementById('gps');
+  const warnEl = document.getElementById('gpsWarn');
+  warnEl.textContent='';
+  const opts={ enableHighAccuracy:true, maximumAge:5000, timeout:15000 };
+
+  const ok=(pos)=>{
+    currentGPS.lat=pos.coords.latitude; currentGPS.lon=pos.coords.longitude; currentGPS.acc=Math.round(pos.coords.accuracy||0);
+    gpsEl.innerText = `${currentGPS.lat.toFixed(5)}, ${currentGPS.lon.toFixed(5)} ±${currentGPS.acc}m`;
+    document.getElementById('digipin').value = genDigiPinFromLatLon(currentGPS.lat, currentGPS.lon);
+    reverseGeocodeIN(currentGPS.lat,currentGPS.lon);
+    enableIfReady();
+  };
+  const err=(e)=>{ explainGeoError(e); };
+
+  try{
+    if(navigator.geolocation.watchPosition){
+      navigator.geolocation.watchPosition(ok, err, opts);
+    }else{
+      navigator.geolocation.getCurrentPosition(ok, err, opts);
+    }
+  }catch(e){
+    explainGeoError(e);
+  }
+}
+document.addEventListener('click', (e)=>{
+  if(e.target && e.target.id==='enableGPS'){ ensureGPS(); }
+  if(e.target && e.target.id==='retryGPS'){ startGPS(true); }
+});
+
+// Show secure origin warning early
+showSecureWarningIfNeeded();
+
+// ---------------- GPS ----------------
+function startGPS(){
+  if(!('geolocation' in navigator)){ $('gps').innerText='GEO NOT SUPPORTED'; return; }
+  const opts={ enableHighAccuracy:true, maximumAge:10000, timeout:15000 };
+  const ok=(pos)=>{
+    currentGPS.lat=pos.coords.latitude; currentGPS.lon=pos.coords.longitude; currentGPS.acc=Math.round(pos.coords.accuracy);
+    $('gps').innerText = `${currentGPS.lat.toFixed(5)}, ${currentGPS.lon.toFixed(5)} ±${currentGPS.acc}m`;
+    $('digipin').value = genDigiPinFromLatLon(currentGPS.lat, currentGPS.lon);
+    reverseGeocodeIN(currentGPS.lat,currentGPS.lon);
+    enableIfReady();
+  };
+  const err=()=>{ $('gps').innerText='LOCATION DENIED/UNAVAILABLE'; $('gpsWarn').textContent='Turn on GPS & use HTTPS.'; };
+  if(navigator.geolocation.watchPosition){
+    try{ navigator.geolocation.watchPosition(ok,err,opts); }catch(e){ navigator.geolocation.getCurrentPosition(ok,err,opts); }
+  }else{ navigator.geolocation.getCurrentPosition(ok,err,opts); }
+}
+
+// ---------------- Init ----------------
+window.addEventListener('load',()=>{
+  $('reportTime').innerText = nowStamp12();
+  startGPS();
+  renderPhotos();
+  $('generate').addEventListener('click', generateReports);
+  ['cmsCode','roName','roLocation','district','state','tsmName','managerName'].forEach(id=>$(id).addEventListener('input', enableIfReady));
+  $('clear').addEventListener('click',()=>{ photoState={}; $('photos').innerHTML=''; renderPhotos(); updateEstimate(); setProgress(0); $('digipin').value=''; enableIfReady(); });
+  $('refreshLoc').addEventListener('click', ()=>{ if(currentGPS.lat){ reverseGeocodeIN(currentGPS.lat,currentGPS.lon); } });
+  $('refreshDist').addEventListener('click', ()=>{ if(currentGPS.lat){ reverseGeocodeIN(currentGPS.lat,currentGPS.lon); } });
+  $('refreshState').addEventListener('click', ()=>{ if(currentGPS.lat){ reverseGeocodeIN(currentGPS.lat,currentGPS.lon); } });
+});
+</script>
+</body>
+</html>
